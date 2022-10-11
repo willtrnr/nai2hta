@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 from __future__ import annotations
 
 import contextlib
@@ -136,6 +138,15 @@ def parse_tags(tags: str) -> Iterable[str]:
                 yield tag
 
 
+def resolve_model(name: str) -> str:
+    name = name.split(" ")[-1]
+    if name == "81274D13":
+        return "full"
+    if name == "1D44365E":
+        return "curated"
+    return name.lower()
+
+
 def derive_tags(image_path: Path | str) -> set[str | tuple[str, str]] | None:
     try:
         with contextlib.closing(Image.open(image_path)) as im:
@@ -143,11 +154,13 @@ def derive_tags(image_path: Path | str) -> set[str | tuple[str, str]] | None:
                 return None
 
             tags: set[str | tuple[str, str]] = set(parse_tags(im.info["Description"]))
-            tags.add(("model", im.info["Source"].split(" ")[-1].lower()))
+
+            tags.add(("model", resolve_model(im.info["Source"])))
 
             params = json.loads(im.info["Comment"])
-            for param in ("steps", "sampler", "seed", "scale"):
-                tags.add((param, str(params[param]).lower()))
+            tags.update(("uc", t) for t in parse_tags(params["uc"]))
+            for param in ("steps", "sampler", "seed", "scale", "noise", "strength"):
+                tags.add((param, str(params.get(param)).lower()))
 
             return tags
     except Exception as ex:
