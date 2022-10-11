@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "nai2hta"
+version = "0.1.0"
+description = ""
+authors = ["William Turner <willtur.will@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+Pillow = "^9.2.0"
+
+[tool.poetry.dev-dependencies]
+black = "^22.10.0"
+isort = "^5.10.1"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+skip_gitignore = true
+combine_as_imports = true
+combine_star = true
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
