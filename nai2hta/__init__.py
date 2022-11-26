@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 from __future__ import annotations
 
 import contextlib
@@ -7,16 +5,17 @@ import glob
 import json
 import re
 import sqlite3
-import sys
 from collections.abc import Iterable
 from pathlib import Path
 
+import parsec
 from PIL import Image
+
+from . import prompt
 
 Tag = str | tuple[str, str]
 
 WS = re.compile(r"\s+")
-
 
 ## Matches the Hydrus Tag Archive schema
 HTA_SCHEMA = """
@@ -24,33 +23,24 @@ HTA_SCHEMA = """
     PRAGMA encoding = 'UTF-8';
     PRAGMA page_size = 4096;
 
-    CREATE TABLE hash_type ( hash_type INTEGER );
+    CREATE TABLE hash_type (hash_type INTEGER);
 
-    CREATE TABLE hashes ( hash_id INTEGER PRIMARY KEY, hash BLOB_BYTES );
-    CREATE UNIQUE INDEX hashes_hash_index ON hashes ( hash );
+    CREATE TABLE hashes (hash_id INTEGER PRIMARY KEY, hash BLOB_BYTES);
+    CREATE UNIQUE INDEX hashes_hash_index ON hashes (hash);
 
-    CREATE TABLE mappings ( hash_id INTEGER, tag_id INTEGER, PRIMARY KEY ( hash_id, tag_id ) );
-    CREATE INDEX mappings_hash_id_index ON mappings ( hash_id );
+    CREATE TABLE mappings (hash_id INTEGER, tag_id INTEGER, PRIMARY KEY (hash_id, tag_id));
+    CREATE INDEX mappings_hash_id_index ON mappings (hash_id);
 
-    CREATE TABLE namespaces ( namespace TEXT );
+    CREATE TABLE namespaces (namespace TEXT);
 
-    CREATE TABLE tags ( tag_id INTEGER PRIMARY KEY, tag TEXT );
-    CREATE UNIQUE INDEX tags_tag_index ON tags ( tag );
+    CREATE TABLE tags (tag_id INTEGER PRIMARY KEY, tag TEXT);
+    CREATE UNIQUE INDEX tags_tag_index ON tags (tag);
 
     INSERT INTO hash_type (hash_type) VALUES (2);
     """
 
 
 class HTA:
-    __slots__ = (
-        "_path",
-        "_conn",
-        "_tags",
-        "_namespaces",
-        "_last_hash_id",
-        "_last_tag_id",
-    )
-
     _path: Path | str
     _conn: sqlite3.Connection
 
@@ -122,6 +112,8 @@ class HTA:
             if (cached := self._tags.get(tag)) is not None:
                 return cached
 
+            print(f"New tag: {tag}")
+
             cur.execute("SELECT tag_id FROM tags WHERE tag = ?", (tag,))
             if (row := cur.fetchone()) is not None:
                 self._tags[tag] = row[0]
@@ -143,13 +135,15 @@ class HTA:
         self._conn.close()
 
 
-def parse_tags(tags: str) -> Iterable[str]:
-    for mixing in WS.sub(" ", tags).split("|"):
-        for tag in mixing.split(","):
-            if ":" in tag:
-                tag = tag.split(":", 1)[0]
-            if tag := tag.strip("(){}[], ").lower():
-                yield tag
+def parse_tags(text: str) -> Iterable[str]:
+    try:
+        for tags, _ in prompt.parse(text):
+            for tag in tags:
+                if clean := WS.sub(" ", tag).strip():
+                    yield clean.lower()
+    except parsec.ParseError:
+        print(f"Failed prompt parse: {text}")
+        raise
 
 
 def identify_model(name: str) -> str:
@@ -230,7 +224,3 @@ def main(db_path: Path | str, hta_path: Path | str) -> None:
             if tags := derive_tags(Path(db_path) / path):
                 print(f"{file_hash}: adding {len(tags)} tag(s)")
                 hta.add_tags(file_hash, tags)
-
-
-if __name__ == "__main__":
-    main(Path(sys.argv[1]), Path(sys.argv[2]))
